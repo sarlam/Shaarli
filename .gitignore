@@ -8,3 +8,6 @@ pagecache
 .settings
 .buildpath
 .project
+
+.idea/
+node_modules/
