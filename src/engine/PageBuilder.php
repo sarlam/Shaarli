@@ -1,20 +1,22 @@
 <?php
 /**
- * @package src\engine
- */
-require "src/vendor/autoload.php";
-use Rain\Tpl as RainTPL;
-
-/**
  * Class PageBuilder
  * This class is in charge of building the final page.
  * (This is basically a wrapper around RainTPL which pre-fills some fields.)
  *
+ * @author sebsauvage, sarlam <sarlam@minet.net>
+ * @version 0.0.1
+ * @package Shaarli\Engine
  * @example
  *      p = new pageBuilder;
  *      p.assign('myfield','myvalue');
  *      p.renderPage('mytemplate');
  */
+
+namespace Shaarli\Engine;
+
+use Rain\Tpl as RainTPL;
+
 class PageBuilder
 {
     /** @var String RainTPL template */
@@ -45,29 +47,29 @@ class PageBuilder
         if (!empty($GLOBALS['title'])) $this->tpl->assign('pagetitle', $GLOBALS['title']);
         if (!empty($GLOBALS['pagetitle'])) $this->tpl->assign('pagetitle', $GLOBALS['pagetitle']);
         $this->tpl->assign('shaarlititle', empty($GLOBALS['title']) ? 'Shaarli' : $GLOBALS['title']);
-        
+
         return;
     }
 
     // The following assign() method is basically the same as RainTPL (except that it's lazy)
     public function assign($what, $where)
     {
-        
+
         if ($this->tpl === false) $this->initialize(); // Lazy initialization
         $this->tpl->assign($what, $where);
 
-        
+
     }
 
     // Render a specific page (using a template).
     // eg. pb.renderPage('picwall')
     public function renderPage($page)
     {
-        
-        
+
+
         if ($this->tpl === false) $this->initialize(); // Lazy initialization
         $this->tpl->draw($page);
 
-        
+
     }
 }

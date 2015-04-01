@@ -5,140 +5,17 @@
 // Licence: http://www.opensource.org/licenses/zlib-license.php
 // Requires: php 5.1.x  (but autocomplete fields will only work if you have php 5.2.x)
 // -----------------------------------------------------------------------------------------------
-// NEVER TRUST IN PHP.INI
-// Some hosts do not define a default timezone in php.ini,
-// so we have to do this for avoid the strict standard error.
-date_default_timezone_set('UTC');
 
-require_once "./src/vendor/autoload.php";
+require_once "./src/loader.php";
 
 use Rain\Tpl as RainTPL;
+use Shaarli\Engine\LinkDB as LinkDB;
+use Shaarli\Engine\PageBuilder as PageBuilder;
+use Shaarli\Engine\pageCache as PageCache;
+use Shaarli\Engine\Environment as Environment;
 
-require_once "./src/engine/PageBuilder.php";
-
-
-
-define('shaarli_version', '0.0.41 beta');
-define('PHPPREFIX', '<?php /* '); // Prefix to encapsulate data in php code.
-define('PHPSUFFIX', ' */ ?>'); // Suffix to encapsulate data in php code.
-// http://server.com/x/shaarli --> /shaarli/
-define('WEB_PATH', substr($_SERVER["REQUEST_URI"], 0, 1 + strrpos($_SERVER["REQUEST_URI"], '/', 0)));
-
-// Force cookie path (but do not change lifetime)
-$cookie = session_get_cookie_params();
-$cookiedir = '';
-if (dirname($_SERVER['SCRIPT_NAME']) != '/') $cookiedir = dirname($_SERVER["SCRIPT_NAME"]) . '/';
-session_set_cookie_params($cookie['lifetime'], $cookiedir, $_SERVER['HTTP_HOST']); // Set default cookie expiration and path.
-
-
-
-
-// Set session parameters on server side.
-define('INACTIVITY_TIMEOUT', 3600); // (in seconds). If the user does not access any page within this time, his/her session is considered expired.
-ini_set('session.use_cookies', 1);       // Use cookies to store session.
-ini_set('session.use_only_cookies', 1);  // Force cookies for session (phpsessionID forbidden in URL)
-ini_set('session.use_trans_sid', false); // Prevent php to use sessionID in URL if cookies are disabled.
-session_name('shaarli');
-if (session_id() == '') session_start();  // Start session if needed (Some server auto-start sessions).
-
-// PHP Settings
-ini_set('max_input_time', '60');  // High execution time in case of problematic imports/exports.
-ini_set('memory_limit', '128M');  // Try to set max upload file size and read (May not work on some hosts).
-ini_set('post_max_size', '16M');
-ini_set('upload_max_filesize', '16M');
-checkphpversion();
-error_reporting(E_ALL ^ E_WARNING);  // See all error except warnings.
-//error_reporting(-1); // See all errors (for debugging only)
-
-//include "inc/rain.tpl.class.php"; //include Rain TPL
-
-if (!is_dir('tmp')) {
-    mkdir('tmp', 0705);
-    chmod('tmp', 0705);
-}
-$config = array(
-    "tpl_dir"       => "tpl/",
-    "cache_dir"     => "tmp/"
-);
-RainTPL::configure( $config );
-
-
-require_once "./src/config/global.php";
-
-
-ob_start();  // Output buffering for the page cache.
-
-
-// In case stupid admin has left magic_quotes enabled in php.ini:
-if (get_magic_quotes_gpc()) {
-    function stripslashes_deep($value)
-    {
-        $value = is_array($value) ? array_map('stripslashes_deep', $value) : stripslashes($value);
-        return $value;
-    }
-
-    $_POST = array_map('stripslashes_deep', $_POST);
-    $_GET = array_map('stripslashes_deep', $_GET);
-    $_COOKIE = array_map('stripslashes_deep', $_COOKIE);
-}
-
-// Prevent caching on client side or proxy: (yes, it's ugly)
-header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
-header("Cache-Control: no-store, no-cache, must-revalidate");
-header("Cache-Control: post-check=0, pre-check=0", false);
-header("Pragma: no-cache");
-
-// Directories creations (Note that your web host may require differents rights than 705.)
-if (!is_writable(realpath(dirname(__FILE__)))) die('<pre>ERROR: Shaarli does not have the right to write in its own directory (' . realpath(dirname(__FILE__)) . ').</pre>');
-if (!is_dir($GLOBALS['config']['DATADIR'])) {
-    mkdir($GLOBALS['config']['DATADIR'], 0705);
-    chmod($GLOBALS['config']['DATADIR'], 0705);
-}
-
-if (!is_file($GLOBALS['config']['DATADIR'] . '/.htaccess')) {
-    file_put_contents($GLOBALS['config']['DATADIR'] . '/.htaccess', "Allow from none\nDeny from all\n");
-} // Protect data files.
-// Second check to see if Shaarli can write in its directory, because on some hosts is_writable() is not reliable.
-if (!is_file($GLOBALS['config']['DATADIR'] . '/.htaccess')) die('<pre>ERROR: Shaarli does not have the right to write in its data directory (' . realpath($GLOBALS['config']['DATADIR']) . ').</pre>');
-if ($GLOBALS['config']['ENABLE_LOCALCACHE']) {
-    if (!is_dir($GLOBALS['config']['CACHEDIR'])) {
-        mkdir($GLOBALS['config']['CACHEDIR'], 0705);
-        chmod($GLOBALS['config']['CACHEDIR'], 0705);
-    }
-    if (!is_file($GLOBALS['config']['CACHEDIR'] . '/.htaccess')) {
-        file_put_contents($GLOBALS['config']['CACHEDIR'] . '/.htaccess', "Allow from none\nDeny from all\n");
-    } // Protect data files.
-}
-
-// Handling of old config file which do not have the new parameters.
-if (empty($GLOBALS['title'])) $GLOBALS['title'] = 'Shared links on ' . htmlspecialchars(indexUrl());
-if (empty($GLOBALS['timezone'])) $GLOBALS['timezone'] = date_default_timezone_get();
-if (empty($GLOBALS['redirector'])) $GLOBALS['redirector'] = '';
-if (empty($GLOBALS['disablesessionprotection'])) $GLOBALS['disablesessionprotection'] = false;
-if (empty($GLOBALS['disablejquery'])) $GLOBALS['disablejquery'] = false;
-if (empty($GLOBALS['privateLinkByDefault'])) $GLOBALS['privateLinkByDefault'] = false;
-// I really need to rewrite Shaarli with a proper configuation manager.
-
-// Run config screen if first run:
-if (!is_file($GLOBALS['config']['CONFIG_FILE'])) install();
-
-require $GLOBALS['config']['CONFIG_FILE'];  // Read login/password hash into $GLOBALS.
-
-// a token depending of deployment salt, user password, and the current ip
-define('STAY_SIGNED_IN_TOKEN', sha1($GLOBALS['hash'] . $_SERVER["REMOTE_ADDR"] . $GLOBALS['salt']));
-
-autoLocale(); // Sniff browser language and set date format accordingly.
-header('Content-Type: text/html; charset=utf-8'); // We use UTF-8 for proper international characters handling.
-
-// Check php version
-function checkphpversion()
-{
-    if (version_compare(PHP_VERSION, '5.1.0') < 0) {
-        header('Content-Type: text/plain; charset=utf-8');
-        echo 'Your server supports php ' . PHP_VERSION . '. Shaarli requires at least php 5.1.0, and thus cannot run. Sorry.';
-        exit;
-    }
-}
+$environment = new Environment();
+RainTPL::configure($environment->getTPLConf());
 
 // Checks if an update is available for Shaarli.
 // (at most once a day, and only for registered user.)
@@ -160,69 +37,6 @@ function checkUpdate()
     $newestversion = file_get_contents($GLOBALS['config']['UPDATECHECK_FILENAME']);
     if (version_compare($newestversion, shaarli_version) == 1) return $newestversion;
     return '';
-}
-
-
-// -----------------------------------------------------------------------------------------------
-// Simple cache system (mainly for the RSS/ATOM feeds).
-
-class pageCache
-{
-    private $url; // Full URL of the page to cache (typically the value returned by pageUrl())
-    private $shouldBeCached; // boolean: Should this url be cached ?
-    private $filename; // Name of the cache file for this url
-
-    /*
-         $url = url (typically the value returned by pageUrl())
-         $shouldBeCached = boolean. If false, the cache will be disabled.
-    */
-    public function __construct($url, $shouldBeCached)
-    {
-        $this->url = $url;
-        $this->filename = $GLOBALS['config']['PAGECACHE'] . '/' . sha1($url) . '.cache';
-        $this->shouldBeCached = $shouldBeCached;
-    }
-
-    // If the page should be cached and a cached version exists,
-    // returns the cached version (otherwise, return null).
-    public function cachedVersion()
-    {
-        if (!$this->shouldBeCached) return null;
-        if (is_file($this->filename)) {
-            return file_get_contents($this->filename);
-            exit;
-        }
-        return null;
-    }
-
-    // Put a page in the cache.
-    public function cache($page)
-    {
-        if (!$this->shouldBeCached) return;
-        if (!is_dir($GLOBALS['config']['PAGECACHE'])) {
-            mkdir($GLOBALS['config']['PAGECACHE'], 0705);
-            chmod($GLOBALS['config']['PAGECACHE'], 0705);
-        }
-        file_put_contents($this->filename, $page);
-    }
-
-    // Purge the whole cache.
-    // (call with pageCache::purgeCache())
-    public static function purgeCache()
-    {
-        if (is_dir($GLOBALS['config']['PAGECACHE'])) {
-            $handler = opendir($GLOBALS['config']['PAGECACHE']);
-            if ($handler !== false) {
-                while (($filename = readdir($handler)) !== false) {
-                    if (endsWith($filename, '.cache')) {
-                        unlink($GLOBALS['config']['PAGECACHE'] . '/' . $filename);
-                    }
-                }
-                closedir($handler);
-            }
-        }
-    }
-
 }
 
 
@@ -271,18 +85,6 @@ function keepMultipleSpaces($text)
 
 }
 
-// ------------------------------------------------------------------------------------------
-// Sniff browser language to display dates in the right format automatically.
-// (Note that is may not work on your server if the corresponding local is not installed.)
-function autoLocale()
-{
-    $loc = 'en_US'; // Default if browser does not send HTTP_ACCEPT_LANGUAGE
-    if (isset($_SERVER['HTTP_ACCEPT_LANGUAGE'])) // eg. "fr,fr-fr;q=0.8,en;q=0.5,en-us;q=0.3"
-    {   // (It's a bit crude, but it works very well. Prefered language is always presented first.)
-        if (preg_match('/([a-z]{2}(-[a-z]{2})?)/i', $_SERVER['HTTP_ACCEPT_LANGUAGE'], $matches)) $loc = $matches[1];
-    }
-    setlocale(LC_TIME, $loc);  // LC_TIME = Set local for date/time format only.
-}
 
 // ------------------------------------------------------------------------------------------
 // PubSubHubbub protocol support (if enabled)  [UNTESTED]
@@ -337,6 +139,7 @@ function check_auth($login, $password)
     logm('Login failed for user ' . $login);
     return False;
 }
+
 // Returns true if the user is logged in.
 function isLoggedIn()
 {
@@ -371,12 +174,6 @@ function logout()
     setcookie('shaarli_staySignedIn', FALSE, 0, WEB_PATH);
 }
 
-
-// ------------------------------------------------------------------------------------------
-// Brute force protection system
-// Several consecutive failed logins will ban the IP address for 30 minutes.
-if (!is_file($GLOBALS['config']['IPBANS_FILENAME'])) file_put_contents($GLOBALS['config']['IPBANS_FILENAME'], "<?php\n\$GLOBALS['IPBANS']=" . var_export(array('FAILURES' => array(), 'BANS' => array()), true) . ";\n?>");
-include $GLOBALS['config']['IPBANS_FILENAME'];
 // Signal a failed login. Will ban the IP if too many failures:
 function ban_loginFailed()
 {
@@ -659,250 +456,6 @@ function tokenOk($token)
     return false; // Wrong token, or already used.
 }
 
-// ------------------------------------------------------------------------------------------
-/* Data storage for links.
-   This object behaves like an associative array.
-   Example:
-      $mylinks = new linkdb();
-      echo $mylinks['20110826_161819']['title'];
-      foreach($mylinks as $link)
-         echo $link['title'].' at url '.$link['url'].' ; description:'.$link['description'];
-
-   Available keys:
-       title : Title of the link
-       url : URL of the link. Can be absolute or relative. Relative URLs are permalinks (eg.'?m-ukcw')
-       description : description of the entry
-       private : Is this link private ? 0=no, other value=yes
-       linkdate : date of the creation of this entry, in the form YYYYMMDD_HHMMSS (eg.'20110914_192317')
-       tags : tags attached to this entry (separated by spaces)
-
-   We implement 3 interfaces:
-     - ArrayAccess so that this object behaves like an associative array.
-     - Iterator so that this object can be used in foreach() loops.
-     - Countable interface so that we can do a count() on this object.
-*/
-
-class linkdb implements Iterator, Countable, ArrayAccess
-{
-    private $links; // List of links (associative array. Key=linkdate (eg. "20110823_124546"), value= associative array (keys:title,description...)
-    private $urls;  // List of all recorded URLs (key=url, value=linkdate) for fast reserve search (url-->linkdate)
-    private $keys;  // List of linkdate keys (for the Iterator interface implementation)
-    private $position; // Position in the $this->keys array. (for the Iterator interface implementation.)
-    private $loggedin; // Is the used logged in ? (used to filter private links)
-
-    // Constructor:
-    function __construct($isLoggedIn)
-        // Input : $isLoggedIn : is the used logged in ?
-    {
-        $this->loggedin = $isLoggedIn;
-        $this->checkdb(); // Make sure data file exists.
-        $this->readdb();  // Then read it.
-    }
-
-    // ---- Countable interface implementation
-    public function count()
-    {
-        return count($this->links);
-    }
-
-    // ---- ArrayAccess interface implementation
-    public function offsetSet($offset, $value)
-    {
-        if (!$this->loggedin) die('You are not authorized to add a link.');
-        if (empty($value['linkdate']) || empty($value['url'])) die('Internal Error: A link should always have a linkdate and url.');
-        if (empty($offset)) die('You must specify a key.');
-        $this->links[$offset] = $value;
-        $this->urls[$value['url']] = $offset;
-    }
-
-    public function offsetExists($offset)
-    {
-        return array_key_exists($offset, $this->links);
-    }
-
-    public function offsetUnset($offset)
-    {
-        if (!$this->loggedin) die('You are not authorized to delete a link.');
-        $url = $this->links[$offset]['url'];
-        unset($this->urls[$url]);
-        unset($this->links[$offset]);
-    }
-
-    public function offsetGet($offset)
-    {
-        return isset($this->links[$offset]) ? $this->links[$offset] : null;
-    }
-
-    // ---- Iterator interface implementation
-    function rewind()
-    {
-        $this->keys = array_keys($this->links);
-        rsort($this->keys);
-        $this->position = 0;
-    } // Start over for iteration, ordered by date (latest first).
-
-    function key()
-    {
-        return $this->keys[$this->position];
-    } // current key
-
-    function current()
-    {
-        return $this->links[$this->keys[$this->position]];
-    } // current value
-
-    function next()
-    {
-        ++$this->position;
-    } // go to next item
-
-    function valid()
-    {
-        return isset($this->keys[$this->position]);
-    }    // Check if current position is valid.
-
-    // ---- Misc methods
-    private function checkdb() // Check if db directory and file exists.
-    {
-        if (!file_exists($GLOBALS['config']['DATASTORE'])) // Create a dummy database for example.
-        {
-            $this->links = array();
-            $link = array('title' => 'Shaarli - sebsauvage.net', 'url' => 'http://sebsauvage.net/wiki/doku.php?id=php:shaarli', 'description' => 'Welcome to Shaarli ! This is a bookmark. To edit or delete me, you must first login.', 'private' => 0, 'linkdate' => '20110914_190000', 'tags' => 'opensource software');
-            $this->links[$link['linkdate']] = $link;
-            $link = array('title' => 'My secret stuff... - Pastebin.com', 'url' => 'http://sebsauvage.net/paste/?8434b27936c09649#bR7XsXhoTiLcqCpQbmOpBi3rq2zzQUC5hBI7ZT1O3x8=', 'description' => 'SShhhh!!  I\'m a private link only YOU can see. You can delete me too.', 'private' => 1, 'linkdate' => '20110914_074522', 'tags' => 'secretstuff');
-            $this->links[$link['linkdate']] = $link;
-            file_put_contents($GLOBALS['config']['DATASTORE'], PHPPREFIX . base64_encode(gzdeflate(serialize($this->links))) . PHPSUFFIX); // Write database to disk
-        }
-    }
-
-    // Read database from disk to memory
-    private function readdb()
-    {
-        // Read data
-        $this->links = (file_exists($GLOBALS['config']['DATASTORE']) ? unserialize(gzinflate(base64_decode(substr(file_get_contents($GLOBALS['config']['DATASTORE']), strlen(PHPPREFIX), -strlen(PHPSUFFIX))))) : array());
-        // Note that gzinflate is faster than gzuncompress. See: http://www.php.net/manual/en/function.gzdeflate.php#96439
-
-        // If user is not logged in, filter private links.
-        if (!$this->loggedin) {
-            $toremove = array();
-            foreach ($this->links as $link) {
-                if ($link['private'] != 0) $toremove[] = $link['linkdate'];
-            }
-            foreach ($toremove as $linkdate) {
-                unset($this->links[$linkdate]);
-            }
-        }
-
-        // Keep the list of the mapping URLs-->linkdate up-to-date.
-        $this->urls = array();
-        foreach ($this->links as $link) {
-            $this->urls[$link['url']] = $link['linkdate'];
-        }
-    }
-
-    // Save database from memory to disk.
-    public function savedb()
-    {
-        if (!$this->loggedin) die('You are not authorized to change the database.');
-        file_put_contents($GLOBALS['config']['DATASTORE'], PHPPREFIX . base64_encode(gzdeflate(serialize($this->links))) . PHPSUFFIX);
-        invalidateCaches();
-    }
-
-    // Returns the link for a given URL (if it exists). false it does not exist.
-    public function getLinkFromUrl($url)
-    {
-        if (isset($this->urls[$url])) return $this->links[$this->urls[$url]];
-        return false;
-    }
-
-    // Case insentitive search among links (in url, title and description). Returns filtered list of links.
-    // eg. print_r($mydb->filterFulltext('hollandais'));
-    public function filterFulltext($searchterms)
-    {
-        // FIXME: explode(' ',$searchterms) and perform a AND search.
-        // FIXME: accept double-quotes to search for a string "as is" ?
-        $filtered = array();
-        $s = strtolower($searchterms);
-        foreach ($this->links as $l) {
-            $found = (strpos(strtolower($l['title']), $s) !== false)
-                || (strpos(strtolower($l['description']), $s) !== false)
-                || (strpos(strtolower($l['url']), $s) !== false)
-                || (strpos(strtolower($l['tags']), $s) !== false);
-            if ($found) $filtered[$l['linkdate']] = $l;
-        }
-        krsort($filtered);
-        return $filtered;
-    }
-
-    // Filter by tag.
-    // You can specify one or more tags (tags can be separated by space or comma).
-    // eg. print_r($mydb->filterTags('linux programming'));
-    public function filterTags($tags, $casesensitive = false)
-    {
-        $t = str_replace(',', ' ', ($casesensitive ? $tags : strtolower($tags)));
-        $searchtags = explode(' ', $t);
-        $filtered = array();
-        foreach ($this->links as $l) {
-            $linktags = explode(' ', ($casesensitive ? $l['tags'] : strtolower($l['tags'])));
-            if (count(array_intersect($linktags, $searchtags)) == count($searchtags))
-                $filtered[$l['linkdate']] = $l;
-        }
-        krsort($filtered);
-        return $filtered;
-    }
-
-    // Filter by day. Day must be in the form 'YYYYMMDD' (eg. '20120125')
-    // Sort order is: older articles first.
-    // eg. print_r($mydb->filterDay('20120125'));
-    public function filterDay($day)
-    {
-        $filtered = array();
-        foreach ($this->links as $l) {
-            if (startsWith($l['linkdate'], $day)) $filtered[$l['linkdate']] = $l;
-        }
-        ksort($filtered);
-        return $filtered;
-    }
-    // Filter by smallHash.
-    // Only 1 article is returned.
-    public function filterSmallHash($smallHash)
-    {
-        $filtered = array();
-        foreach ($this->links as $l) {
-            if ($smallHash == smallHash($l['linkdate'])) // Yes, this is ugly and slow
-            {
-                $filtered[$l['linkdate']] = $l;
-                return $filtered;
-            }
-        }
-        return $filtered;
-    }
-
-    // Returns the list of all tags
-    // Output: associative array key=tags, value=0
-    public function allTags()
-    {
-        $tags = array();
-        foreach ($this->links as $link)
-            foreach (explode(' ', $link['tags']) as $tag)
-                if (!empty($tag)) $tags[$tag] = (empty($tags[$tag]) ? 1 : $tags[$tag] + 1);
-        arsort($tags); // Sort tags by usage (most used tag first)
-        return $tags;
-    }
-
-    // Returns the list of days containing articles (oldest first)
-    // Output: An array containing days (in format YYYYMMDD).
-    public function days()
-    {
-        $linkdays = array();
-        foreach (array_keys($this->links) as $day) {
-            $linkdays[substr($day, 0, 8)] = 0;
-        }
-        $linkdays = array_keys($linkdays);
-        sort($linkdays);
-        return $linkdays;
-    }
-}
 
 // ------------------------------------------------------------------------------------------
 // Ouput the last N links in RSS 2.0 format.
@@ -924,7 +477,7 @@ function showRSS()
     }
 
     // If cached was not found (or not usable), then read the database and build the response:
-    $LINKSDB = new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
+    $LINKSDB = new LinkDB(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
 
     // Optionnaly filter the results:
     $linksToDisplay = array();
@@ -1005,7 +558,7 @@ function showATOM()
     }
     // If cached was not found (or not usable), then read the database and build the response:
 
-    $LINKSDB = new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
+    $LINKSDB = new LinkDB(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
 
 
     // Optionnaly filter the results:
@@ -1092,7 +645,7 @@ function showDailyRSS()
         exit;
     }
     // If cached was not found (or not usable), then read the database and build the response:
-    $LINKSDB = new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
+    $LINKSDB = new LinkDB(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
 
     /* Some Shaarlies may have very few links, so we need to look
        back in time (rsort()) until we have enough days ($nb_of_days).
@@ -1160,7 +713,7 @@ function showDailyRSS()
 // "Daily" page.
 function showDaily()
 {
-    $LINKSDB = new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
+    $LINKSDB = new LinkDB(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
 
 
     $day = Date('Ymd', strtotime('-1 day')); // Yesterday, in format YYYYMMDD.
@@ -1228,7 +781,7 @@ function showDaily()
 // Render HTML page (according to URL parameters and user rights)
 function renderPage()
 {
-    $LINKSDB = new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
+    $LINKSDB = new LinkDB(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
 
     // -------- Display login form.
     if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"], 'do=login')) {
@@ -1711,7 +1264,7 @@ function importFile()
     if (!(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI'])) {
         die('Not allowed.');
     }
-    $LINKSDB = new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
+    $LINKSDB = new LinkDB(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
     $filename = $_FILES['filetoupload']['name'];
     $filesize = $_FILES['filetoupload']['size'];
     $data = file_get_contents($_FILES['filetoupload']['tmp_name']);
@@ -2055,62 +1608,6 @@ function lazyThumbnail($url, $href = false)
     return $html;
 }
 
-
-// -----------------------------------------------------------------------------------------------
-// Installation
-// This function should NEVER be called if the file data/config.php exists.
-function install()
-{
-    // On free.fr host, make sure the /sessions directory exists, otherwise login will not work.
-    if (endsWith($_SERVER['HTTP_HOST'], '.free.fr') && !is_dir($_SERVER['DOCUMENT_ROOT'] . '/sessions')) mkdir($_SERVER['DOCUMENT_ROOT'] . '/sessions', 0705);
-
-
-    // This part makes sure sessions works correctly.
-    // (Because on some hosts, session.save_path may not be set correctly,
-    // or we may not have write access to it.)
-    if (isset($_GET['test_session']) && (!isset($_SESSION) || !isset($_SESSION['session_tested']) || $_SESSION['session_tested'] != 'Working')) {   // Step 2: Check if data in session is correct.
-        echo '<pre>Sessions do not seem to work correctly on your server.<br>';
-        echo 'Make sure the variable session.save_path is set correctly in your php config, and that you have write access to it.<br>';
-        echo 'It currently points to ' . session_save_path() . '<br><br><a href="?">Click to try again.</a></pre>';
-        die;
-    }
-    if (!isset($_SESSION['session_tested'])) {   // Step 1 : Try to store data in session and reload page.
-        $_SESSION['session_tested'] = 'Working';  // Try to set a variable in session.
-        header('Location: ' . indexUrl() . '?test_session');  // Redirect to check stored data.
-    }
-    if (isset($_GET['test_session'])) {   // Step 3: Sessions are ok. Remove test parameter from URL.
-        header('Location: ' . indexUrl());
-    }
-
-
-    if (!empty($_POST['setlogin']) && !empty($_POST['setpassword'])) {
-        $tz = 'UTC';
-        if (!empty($_POST['continent']) && !empty($_POST['city']))
-            if (isTZvalid($_POST['continent'], $_POST['city']))
-                $tz = $_POST['continent'] . '/' . $_POST['city'];
-        $GLOBALS['timezone'] = $tz;
-        // Everything is ok, let's create config file.
-        $GLOBALS['login'] = $_POST['setlogin'];
-        $GLOBALS['salt'] = sha1(uniqid('', true) . '_' . mt_rand()); // Salt renders rainbow-tables attacks useless.
-        $GLOBALS['hash'] = sha1($_POST['setpassword'] . $GLOBALS['login'] . $GLOBALS['salt']);
-        $GLOBALS['title'] = (empty($_POST['title']) ? 'Shared links on ' . htmlspecialchars(indexUrl()) : $_POST['title']);
-        writeConfig();
-        echo '<script language="JavaScript">alert("Shaarli is now configured. Please enter your login/password and start shaaring your links !");document.location=\'?do=login\';</script>';
-        exit;
-    }
-
-    // Display config form:
-    list($timezone_form, $timezone_js) = templateTZform();
-    $timezone_html = '';
-    if ($timezone_form != '') $timezone_html = '<tr><td valign="top"><b>Timezone:</b></td><td>' . $timezone_form . '</td></tr>';
-
-    $PAGE = new PageBuilder;
-    $PAGE->assign('timezone_html', $timezone_html);
-    $PAGE->assign('timezone_js', $timezone_js);
-    $PAGE->renderPage('install');
-    exit;
-}
-
 // Generates the timezone selection form and javascript.
 // Input: (optional) current timezone (can be 'UTC/UTC'). It will be pre-selected.
 // Output: array(html,js)
@@ -2221,7 +1718,7 @@ function processWS()
 {
     if (empty($_GET['ws']) || empty($_GET['term'])) return;
     $term = $_GET['term'];
-    $LINKSDB = new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
+    $LINKSDB = new LinkDB(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
     header('Content-Type: application/json; charset=utf-8');
 
     // Search in tags (case insentitive, cumulative search)
@@ -2258,7 +1755,7 @@ function processWS()
 // (otherwise, the function simply returns.)
 function writeConfig()
 {
-    
+
     if (is_file($GLOBALS['config']['CONFIG_FILE']) && !isLoggedIn()) die('You are not authorized to alter config.'); // Only logged in user can alter config.
     $config = '<?php $GLOBALS[\'login\']=' . var_export($GLOBALS['login'], true) . '; $GLOBALS[\'hash\']=' . var_export($GLOBALS['hash'], true) . '; $GLOBALS[\'salt\']=' . var_export($GLOBALS['salt'], true) . '; ';
     $config .= '$GLOBALS[\'timezone\']=' . var_export($GLOBALS['timezone'], true) . '; date_default_timezone_set(' . var_export($GLOBALS['timezone'], true) . '); $GLOBALS[\'title\']=' . var_export($GLOBALS['title'], true) . ';';
@@ -2500,4 +1997,3 @@ if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"], 'ws=
 } // Webservices (for jQuery/jQueryUI)
 if (!isset($_SESSION['LINKS_PER_PAGE'])) $_SESSION['LINKS_PER_PAGE'] = $GLOBALS['config']['LINKS_PER_PAGE'];
 renderPage();
-?>
