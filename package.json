@@ -18,6 +18,8 @@
   "homepage": "https://github.com/sarlam/Shaarli",
   "private": true,
   "devDependencies": {
-    "grunt": "~0.4.5"
+    "grunt": "~0.4.5",
+    "grunt-bower-requirejs": "latest",
+    "grunt-phpdocumentor": "^0.4.1"
   }
 }
