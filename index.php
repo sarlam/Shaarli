@@ -10,29 +10,13 @@
 // so we have to do this for avoid the strict standard error.
 date_default_timezone_set('UTC');
 
-// -----------------------------------------------------------------------------------------------
-// Hardcoded parameter (These parameters can be overwritten by creating the file /config/options.php)
-$GLOBALS['config']['DATADIR'] = 'data'; // Data subdirectory
-$GLOBALS['config']['CONFIG_FILE'] = $GLOBALS['config']['DATADIR'] . '/config.php'; // Configuration file (user login/password)
-$GLOBALS['config']['DATASTORE'] = $GLOBALS['config']['DATADIR'] . '/datastore.php'; // Data storage file.
-$GLOBALS['config']['LINKS_PER_PAGE'] = 20; // Default links per page.
-$GLOBALS['config']['IPBANS_FILENAME'] = $GLOBALS['config']['DATADIR'] . '/ipbans.php'; // File storage for failures and bans.
-$GLOBALS['config']['BAN_AFTER'] = 4;        // Ban IP after this many failures.
-$GLOBALS['config']['BAN_DURATION'] = 1800;  // Ban duration for IP address after login failures (in seconds) (1800 sec. = 30 minutes)
-$GLOBALS['config']['OPEN_SHAARLI'] = false; // If true, anyone can add/edit/delete links without having to login
-$GLOBALS['config']['HIDE_TIMESTAMPS'] = false; // If true, the moment when links were saved are not shown to users that are not logged in.
-$GLOBALS['config']['ENABLE_THUMBNAILS'] = true; // Enable thumbnails in links.
-$GLOBALS['config']['CACHEDIR'] = 'cache'; // Cache directory for thumbnails for SLOW services (like flickr)
-$GLOBALS['config']['PAGECACHE'] = 'pagecache'; // Page cache directory.
-$GLOBALS['config']['ENABLE_LOCALCACHE'] = true; // Enable Shaarli to store thumbnail in a local cache. Disable to reduce webspace usage.
-$GLOBALS['config']['PUBSUBHUB_URL'] = ''; // PubSubHubbub support. Put an empty string to disable, or put your hub url here to enable.
-$GLOBALS['config']['UPDATECHECK_FILENAME'] = $GLOBALS['config']['DATADIR'] . '/lastupdatecheck.txt'; // For updates check of Shaarli.
-$GLOBALS['config']['UPDATECHECK_INTERVAL'] = 86400; // Updates check frequency for Shaarli. 86400 seconds=24 hours
-// Note: You must have publisher.php in the same directory as Shaarli index.php
-// -----------------------------------------------------------------------------------------------
-// You should not touch below (or at your own risks !)
-// Optionnal config file.
-if (is_file($GLOBALS['config']['DATADIR'] . '/options.php')) require($GLOBALS['config']['DATADIR'] . '/options.php');
+require_once "./src/vendor/autoload.php";
+
+use Rain\Tpl as RainTPL;
+
+require_once "./src/engine/PageBuilder.php";
+
+
 
 define('shaarli_version', '0.0.41 beta');
 define('PHPPREFIX', '<?php /* '); // Prefix to encapsulate data in php code.
@@ -45,6 +29,9 @@ $cookie = session_get_cookie_params();
 $cookiedir = '';
 if (dirname($_SERVER['SCRIPT_NAME']) != '/') $cookiedir = dirname($_SERVER["SCRIPT_NAME"]) . '/';
 session_set_cookie_params($cookie['lifetime'], $cookiedir, $_SERVER['HTTP_HOST']); // Set default cookie expiration and path.
+
+
+
 
 // Set session parameters on server side.
 define('INACTIVITY_TIMEOUT', 3600); // (in seconds). If the user does not access any page within this time, his/her session is considered expired.
@@ -63,13 +50,21 @@ checkphpversion();
 error_reporting(E_ALL ^ E_WARNING);  // See all error except warnings.
 //error_reporting(-1); // See all errors (for debugging only)
 
-include "inc/rain.tpl.class.php"; //include Rain TPL
-raintpl::$tpl_dir = "tpl/"; // template directory
+//include "inc/rain.tpl.class.php"; //include Rain TPL
+
 if (!is_dir('tmp')) {
     mkdir('tmp', 0705);
     chmod('tmp', 0705);
 }
-raintpl::$cache_dir = "tmp/"; // cache directory
+$config = array(
+    "tpl_dir"       => "tpl/",
+    "cache_dir"     => "tmp/"
+);
+RainTPL::configure( $config );
+
+
+require_once "./src/config/global.php";
+
 
 ob_start();  // Output buffering for the page cache.
 
@@ -99,10 +94,7 @@ if (!is_dir($GLOBALS['config']['DATADIR'])) {
     mkdir($GLOBALS['config']['DATADIR'], 0705);
     chmod($GLOBALS['config']['DATADIR'], 0705);
 }
-if (!is_dir('tmp')) {
-    mkdir('tmp', 0705);
-    chmod('tmp', 0705);
-} // For RainTPL temporary files.
+
 if (!is_file($GLOBALS['config']['DATADIR'] . '/.htaccess')) {
     file_put_contents($GLOBALS['config']['DATADIR'] . '/.htaccess', "Allow from none\nDeny from all\n");
 } // Protect data files.
@@ -345,7 +337,6 @@ function check_auth($login, $password)
     logm('Login failed for user ' . $login);
     return False;
 }
-
 // Returns true if the user is logged in.
 function isLoggedIn()
 {
@@ -666,60 +657,6 @@ function tokenOk($token)
         return true; // Token is ok.
     }
     return false; // Wrong token, or already used.
-}
-
-// ------------------------------------------------------------------------------------------
-/* This class is in charge of building the final page.
-   (This is basically a wrapper around RainTPL which pre-fills some fields.)
-   p = new pageBuilder;
-   p.assign('myfield','myvalue');
-   p.renderPage('mytemplate');
-
-*/
-
-class pageBuilder
-{
-    private $tpl; // RainTPL template
-
-    function __construct()
-    {
-        $this->tpl = false;
-    }
-
-    private function initialize()
-    {
-        $this->tpl = new RainTPL;
-        $this->tpl->assign('newversion', checkUpdate());
-        $this->tpl->assign('feedurl', htmlspecialchars(indexUrl()));
-        $searchcrits = ''; // Search criteria
-        if (!empty($_GET['searchtags'])) $searchcrits .= '&searchtags=' . urlencode($_GET['searchtags']);
-        elseif (!empty($_GET['searchterm'])) $searchcrits .= '&searchterm=' . urlencode($_GET['searchterm']);
-        $this->tpl->assign('searchcrits', $searchcrits);
-        $this->tpl->assign('source', indexUrl());
-        $this->tpl->assign('version', shaarli_version);
-        $this->tpl->assign('scripturl', indexUrl());
-        $this->tpl->assign('pagetitle', 'Shaarli');
-        $this->tpl->assign('privateonly', !empty($_SESSION['privateonly'])); // Show only private links ?
-        if (!empty($GLOBALS['title'])) $this->tpl->assign('pagetitle', $GLOBALS['title']);
-        if (!empty($GLOBALS['pagetitle'])) $this->tpl->assign('pagetitle', $GLOBALS['pagetitle']);
-        $this->tpl->assign('shaarlititle', empty($GLOBALS['title']) ? 'Shaarli' : $GLOBALS['title']);
-        return;
-    }
-
-    // The following assign() method is basically the same as RainTPL (except that it's lazy)
-    public function assign($what, $where)
-    {
-        if ($this->tpl === false) $this->initialize(); // Lazy initialization
-        $this->tpl->assign($what, $where);
-    }
-
-    // Render a specific page (using a template).
-    // eg. pb.renderPage('picwall')
-    public function renderPage($page)
-    {
-        if ($this->tpl === false) $this->initialize(); // Lazy initialization
-        $this->tpl->draw($page);
-    }
 }
 
 // ------------------------------------------------------------------------------------------
@@ -1272,7 +1209,7 @@ function showDaily()
         array_push($columns[$index], $link); // Put entry in this column.
         $fill[$index] += $length;
     }
-    $PAGE = new pageBuilder;
+    $PAGE = new PageBuilder;
     $PAGE->assign('linksToDisplay', $linksToDisplay);
     $PAGE->assign('linkcount', count($LINKSDB));
     $PAGE->assign('col1', $columns[0]);
@@ -1301,7 +1238,7 @@ function renderPage()
         }  // No need to login for open Shaarli
         $token = '';
         if (ban_canLogin()) $token = getToken(); // Do not waste token generation if not useful.
-        $PAGE = new pageBuilder;
+        $PAGE = new PageBuilder;
         $PAGE->assign('token', $token);
         $PAGE->assign('returnurl', (isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : ''));
         $PAGE->renderPage('loginform');
@@ -1336,7 +1273,7 @@ function renderPage()
                 $linksToDisplay[] = $link; // Add to array.
             }
         }
-        $PAGE = new pageBuilder;
+        $PAGE = new PageBuilder;
         $PAGE->assign('linkcount', count($LINKSDB));
         $PAGE->assign('linksToDisplay', $linksToDisplay);
         $PAGE->renderPage('picwall');
@@ -1355,7 +1292,7 @@ function renderPage()
         foreach ($tags as $key => $value) {
             $tagList[$key] = array('count' => $value, 'size' => max(40 * $value / $maxcount, 8));
         }
-        $PAGE = new pageBuilder;
+        $PAGE = new PageBuilder;
         $PAGE->assign('linkcount', count($LINKSDB));
         $PAGE->assign('tags', $tagList);
         $PAGE->renderPage('tagcloud');
@@ -1430,7 +1367,7 @@ function renderPage()
             header('Location: ?do=login&post=' . urlencode($_GET['post']) . (!empty($_GET['title']) ? '&title=' . urlencode($_GET['title']) : '') . (!empty($_GET['source']) ? '&source=' . urlencode($_GET['source']) : '')); // Redirect to login page, then back to post link.
             exit;
         }
-        $PAGE = new pageBuilder;
+        $PAGE = new PageBuilder;
         buildLinkList($PAGE, $LINKSDB); // Compute list of links to display
         $PAGE->renderPage('linklist');
         exit; // Never remove this one ! All operations below are reserved for logged in user.
@@ -1440,7 +1377,7 @@ function renderPage()
 
     // -------- Display the Tools menu if requested (import/export/bookmarklet...)
     if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"], 'do=tools')) {
-        $PAGE = new pageBuilder;
+        $PAGE = new PageBuilder;
         $PAGE->assign('linkcount', count($LINKSDB));
         $PAGE->assign('pageabsaddr', indexUrl());
         $PAGE->renderPage('tools');
@@ -1467,7 +1404,7 @@ function renderPage()
             exit;
         } else // show the change password form.
         {
-            $PAGE = new pageBuilder;
+            $PAGE = new PageBuilder;
             $PAGE->assign('linkcount', count($LINKSDB));
             $PAGE->assign('token', getToken());
             $PAGE->renderPage('changepassword');
@@ -1494,7 +1431,7 @@ function renderPage()
             exit;
         } else // Show the configuration form.
         {
-            $PAGE = new pageBuilder;
+            $PAGE = new PageBuilder;
             $PAGE->assign('linkcount', count($LINKSDB));
             $PAGE->assign('token', getToken());
             $PAGE->assign('title', htmlspecialchars(empty($GLOBALS['title']) ? '' : $GLOBALS['title'], ENT_QUOTES));
@@ -1510,7 +1447,7 @@ function renderPage()
     // -------- User wants to rename a tag or delete it
     if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"], 'do=changetag')) {
         if (empty($_POST['fromtag'])) {
-            $PAGE = new pageBuilder;
+            $PAGE = new PageBuilder;
             $PAGE->assign('linkcount', count($LINKSDB));
             $PAGE->assign('token', getToken());
             $PAGE->renderPage('changetag');
@@ -1551,7 +1488,7 @@ function renderPage()
 
     // -------- User wants to add a link without using the bookmarklet: show form.
     if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"], 'do=addlink')) {
-        $PAGE = new pageBuilder;
+        $PAGE = new PageBuilder;
         $PAGE->assign('linkcount', count($LINKSDB));
         $PAGE->renderPage('addlink');
         exit;
@@ -1626,7 +1563,7 @@ function renderPage()
             header('Location: ?');
             exit;
         } // Link not found in database.
-        $PAGE = new pageBuilder;
+        $PAGE = new PageBuilder;
         $PAGE->assign('linkcount', count($LINKSDB));
         $PAGE->assign('link', $link);
         $PAGE->assign('link_is_new', false);
@@ -1656,7 +1593,7 @@ function renderPage()
             $title = (empty($_GET['title']) ? '' : $_GET['title']); // Get title if it was provided in URL (by the bookmarklet).
             $description = (empty($_GET['description']) ? '' : $_GET['description']); // Get description if it was provided in URL (by the bookmarklet). [Bronco added that]
             $tags = (empty($_GET['tags']) ? '' : $_GET['tags']); // Get tags if it was provided in URL
-            $private = (!empty($_GET['private']) && $_GET['private'] === "1" ? 1 : 0); // Get private if it was provided in URL 
+            $private = (!empty($_GET['private']) && $_GET['private'] === "1" ? 1 : 0); // Get private if it was provided in URL
             if (($url != '') && parse_url($url, PHP_URL_SCHEME) == '') $url = 'http://' . $url;
             // If this is an HTTP link, we try go get the page to extact the title (otherwise we will to straight to the edit form.)
             if (empty($title) && parse_url($url, PHP_URL_SCHEME) == 'http') {
@@ -1688,7 +1625,7 @@ function renderPage()
             $link = array('linkdate' => $linkdate, 'title' => $title, 'url' => $url, 'description' => $description, 'tags' => $tags, 'private' => $private);
         }
 
-        $PAGE = new pageBuilder;
+        $PAGE = new PageBuilder;
         $PAGE->assign('linkcount', count($LINKSDB));
         $PAGE->assign('link', $link);
         $PAGE->assign('link_is_new', $link_is_new);
@@ -1701,7 +1638,7 @@ function renderPage()
     // -------- Export as Netscape Bookmarks HTML file.
     if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"], 'do=export')) {
         if (empty($_GET['what'])) {
-            $PAGE = new pageBuilder;
+            $PAGE = new PageBuilder;
             $PAGE->assign('linkcount', count($LINKSDB));
             $PAGE->renderPage('export');
             exit;
@@ -1751,7 +1688,7 @@ HTML;
 
     // -------- Show upload/import dialog:
     if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"], 'do=import')) {
-        $PAGE = new pageBuilder;
+        $PAGE = new PageBuilder;
         $PAGE->assign('linkcount', count($LINKSDB));
         $PAGE->assign('token', getToken());
         $PAGE->assign('maxfilesize', getMaxFileSize());
@@ -1760,7 +1697,7 @@ HTML;
     }
 
     // -------- Otherwise, simply display search form and links:
-    $PAGE = new pageBuilder;
+    $PAGE = new PageBuilder;
     $PAGE->assign('linkcount', count($LINKSDB));
     buildLinkList($PAGE, $LINKSDB); // Compute list of links to display
     $PAGE->renderPage('linklist');
@@ -2167,7 +2104,7 @@ function install()
     $timezone_html = '';
     if ($timezone_form != '') $timezone_html = '<tr><td valign="top"><b>Timezone:</b></td><td>' . $timezone_form . '</td></tr>';
 
-    $PAGE = new pageBuilder;
+    $PAGE = new PageBuilder;
     $PAGE->assign('timezone_html', $timezone_html);
     $PAGE->assign('timezone_js', $timezone_js);
     $PAGE->renderPage('install');
@@ -2217,10 +2154,10 @@ function templateTZform($ptz = false)
         $cities_html = $cities[$pcontinent];
         $timezone_form = "Continent: <select name=\"continent\" id=\"continent\" onChange=\"onChangecontinent();\">${continents_html}</select>";
         $timezone_form .= "&nbsp;&nbsp;&nbsp;&nbsp;City: <select name=\"city\" id=\"city\">${cities[$pcontinent]}</select><br />";
-        $timezone_js = "<script language=\"JavaScript\">";
-        $timezone_js .= "function onChangecontinent(){document.getElementById(\"city\").innerHTML = citiescontinent[document.getElementById(\"continent\").value];}";
-        $timezone_js .= "var citiescontinent = " . json_encode($cities) . ";";
-        $timezone_js .= "</script>";
+        $timezone_js = '<script type="text/javascript">';
+        $timezone_js .= 'function onChangecontinent(){document.getElementById("city").innerHTML = citiescontinent[document.getElementById("continent").value];}';
+        $timezone_js .= 'var citiescontinent = ' . json_encode($cities) . ';';
+        $timezone_js .= '</script>';
         return array($timezone_form, $timezone_js);
     }
     return array('', '');
@@ -2321,6 +2258,7 @@ function processWS()
 // (otherwise, the function simply returns.)
 function writeConfig()
 {
+    
     if (is_file($GLOBALS['config']['CONFIG_FILE']) && !isLoggedIn()) die('You are not authorized to alter config.'); // Only logged in user can alter config.
     $config = '<?php $GLOBALS[\'login\']=' . var_export($GLOBALS['login'], true) . '; $GLOBALS[\'hash\']=' . var_export($GLOBALS['hash'], true) . '; $GLOBALS[\'salt\']=' . var_export($GLOBALS['salt'], true) . '; ';
     $config .= '$GLOBALS[\'timezone\']=' . var_export($GLOBALS['timezone'], true) . '; date_default_timezone_set(' . var_export($GLOBALS['timezone'], true) . '); $GLOBALS[\'title\']=' . var_export($GLOBALS['title'], true) . ';';
@@ -2330,7 +2268,7 @@ function writeConfig()
     $config .= '$GLOBALS[\'privateLinkByDefault\']=' . var_export($GLOBALS['privateLinkByDefault'], true) . '; ';
     $config .= ' ?>';
     if (!file_put_contents($GLOBALS['config']['CONFIG_FILE'], $config) || strcmp(file_get_contents($GLOBALS['config']['CONFIG_FILE']), $config) != 0) {
-        echo '<script language="JavaScript">alert("Shaarli could not create the config file. Please make sure Shaarli has the right to write in the folder is it installed in.");document.location=\'?\';</script>';
+        //echo '<script language="JavaScript">alert("Shaarli could not create the config file. Please make sure Shaarli has the right to write in the folder is it installed in.");document.location=\'?\';</script>';
         exit;
     }
 }

@@ -18,7 +18,7 @@
 <script language="JavaScript">
 $(document).ready(function()
 {
-    $('#fromtag').autocomplete({source:'{$source}?ws=singletag',minLength:1});
+    $('#fromtag').autocomplete({source:'{autoescape="off"}{$source}{/autoescape}?ws=singletag',minLength:1});
 });
 </script>
 {/if}
