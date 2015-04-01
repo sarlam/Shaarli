@@ -21,3 +21,6 @@ src/vendor
 
 # bower
 themes/common/lib
+
+# phpdocumentor
+docs
