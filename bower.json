@@ -1,0 +1,18 @@
+{
+  "name": "caphorn_webapp",
+  "version": "0.1.0",
+  "ignore": [
+    ".jshintrc",
+    "**/*.txt"
+  ],
+  "private": true,
+  "dependencies": {
+    "jquery-ui": "~1.11.4",
+    "jquery.lazyload": "~1.9.4",
+    "qr-js": "~1.1.3"
+  },
+  "devDependencies": {
+    "jasmine-jquery": "~2.0.5",
+    "jasmine": "~2.1.3"
+  }
+}

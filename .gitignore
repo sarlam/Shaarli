@@ -8,3 +8,19 @@ pagecache
 .settings
 .buildpath
 .project
+
+# phpstorm
+.idea/
+
+# grunt
+node_modules/
+
+# packagist
+composer.lock
+src/vendor
+
+# bower
+themes/common/lib
+
+# phpdocumentor
+docs
