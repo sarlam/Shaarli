@@ -18,10 +18,10 @@
     
     {if="$linksToDisplay"}
         <div id="daily_col1">
-        {loop="col1"}
+        {loop="$col1"}
         <div class="dailyEntry">
             <div style="float:right;position:relative;top:-1px;"><a href="?{$value.linkdate|smallHash}"><img src="../images/squiggle2.png" width="25" height="26" title="permalink" alt="permalink"></a></div>
-            {if="$value.tags"}<div class="dailyEntryTags">{loop="value.taglist"}{$value|htmlspecialchars} - {/loop}</div>{/if}
+            {if="$value.tags"}<div class="dailyEntryTags">{loop="$value.taglist"}{$value|htmlspecialchars} - {/loop}</div>{/if}
             <div class="dailyEntryTitle"><a href="{$value.url}">{$value.title|htmlspecialchars}</a></div>
             {if="$value.thumbnail"}<div class="dailyEntryThumbnail">{$value.thumbnail}</div>{/if}
             <div class="dailyEntryDescription">{$value.formatedDescription}</div>
@@ -30,10 +30,10 @@
         </div>
 
         <div id="daily_col2">
-        {loop="col2"}
+        {loop="$col2"}
         <div class="dailyEntry">
             <div style="float:right;position:relative;top:-1px;"><a href="?{$value.linkdate|smallHash}"><img src="../images/squiggle2.png" width="25" height="26" title="permalink" alt="permalink"></a></div>
-            {if="$value.tags"}<div class="dailyEntryTags">{loop="value.taglist"}{$value|htmlspecialchars} - {/loop}</div>{/if}
+            {if="$value.tags"}<div class="dailyEntryTags">{loop="$value.taglist"}{$value|htmlspecialchars} - {/loop}</div>{/if}
             <div class="dailyEntryTitle"><a href="{$value.url}">{$value.title|htmlspecialchars}</a></div>
             {if="$value.thumbnail"}<div class="dailyEntryThumbnail">{$value.thumbnail}</div>{/if}
             <div class="dailyEntryDescription">{$value.formatedDescription}</div>
@@ -42,10 +42,10 @@
         </div>    
 
         <div id="daily_col3">
-        {loop="col3"}
+        {loop="$col3"}
         <div class="dailyEntry">
             <div style="float:right;position:relative;top:-1px;"><a href="?{$value.linkdate|smallHash}"><img src="../images/squiggle2.png" width="25" height="26" title="permalink" alt="permalink"></a></div>
-            {if="$value.tags"}<div class="dailyEntryTags">{loop="value.taglist"}{$value|htmlspecialchars} - {/loop}</div>{/if}
+            {if="$value.tags"}<div class="dailyEntryTags">{loop="$value.taglist"}{$value|htmlspecialchars} - {/loop}</div>{/if}
             <div class="dailyEntryTitle"><a href="{$value.url}">{$value.title|htmlspecialchars}</a></div>
             {if="$value.thumbnail"}<div class="dailyEntryThumbnail">{$value.thumbnail}</div>{/if}
             <div class="dailyEntryDescription">{$value.formatedDescription}</div>
