@@ -1574,7 +1574,7 @@ function thumbnail($url, $href = false)
 
 // Returns the HTML code to display a thumbnail for a link
 // for the picture wall (using lazy image loading)
-// Understands various services (youtube.com...)
+// Understands various servicesl (youtube.com...)
 // Input: $url = url for which the thumbnail must be found.
 //        $href = if provided, this URL will be followed instead of $url
 // Returns '' if no thumbnail available.
